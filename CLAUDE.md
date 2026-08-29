@@ -13,12 +13,11 @@ used for logging Moodle users into external IdPs — the opposite direction).
 
 Extracted 2026-08-28 from a full working implementation originally built inside
 `mod_minilesson` (~85-90% of that code had zero dependency on minilesson's content model).
-`mod_minilesson` is the reference/first consumer, on the same Moodle install
-(`/home/ubuntu/moodles/m51/public/mod/minilesson`) but its own separate git repo. This
-plugin's own dev should happen here, not there — but `mod_minilesson/forclaude/mcp-oauth-implementation-guide.md`
-§3 is the canonical "how another plugin becomes a consumer" doc if you need the integration
-side; §4-§6 there also hold hard-won real-client-behavior findings (which clients discover
-OAuth how, and why) that aren't duplicated below.
+`mod_minilesson` is the reference/first consumer — its own separate git repo, typically
+installed alongside this plugin on the same Moodle site. This plugin's own dev happens
+here, not there. See `README.md` in this repo for the full consumer-integration guide (the
+"How a plugin becomes a consumer" section) and the server-configuration/client-behavior
+findings — this file focuses on developing *this* plugin, not duplicating that.
 
 **This plugin issues no token type of its own.** An "access token" it hands out via
 `/token` is *whatever real Moodle web-service token* the consuming plugin's own
@@ -32,24 +31,23 @@ of OAuth, whether or not this plugin is even installed.
 
 ## Environment & dev workflow
 
-- **Moodle code root:** `/home/ubuntu/moodles/m51` (web root is `public/`). This plugin
-  lives at `public/local/oauthmcp`. Read Moodle core APIs directly from there instead of
-  guessing.
-- **Install/upgrade:** `/home/ubuntu/moodles/m51/public/do-docker.sh upgrade` (installs or
-  upgrades every plugin, this one included, inside the moodle-docker container). Follow
-  with `do-docker.sh purgecaches` after any change that affects discovery, since the
-  resource registry (see below) is rebuilt from `get_plugins_with_function()` scans.
-- **`do-docker.sh cron`** runs scheduled tasks, including this plugin's hourly
-  `oauth_cleanup` task.
-- **phpcs** (Moodle coding style, `moodle` ruleset) — run on the host, no Docker:
+- This plugin lives at `<moodle_root>/local/oauthmcp` — read Moodle core APIs directly from
+  `<moodle_root>` instead of guessing at signatures.
+- **Install/upgrade:** the normal Moodle way — `php admin/cli/upgrade.php` from the Moodle
+  root, or the web upgrade flow. Follow with `php admin/cli/purge_caches.php` after any
+  change that affects discovery, since the resource registry (see below) is rebuilt from
+  `get_plugins_with_function()` scans.
+- `php admin/cli/scheduled_task.php --execute='\local_oauthmcp\task\oauth_cleanup'` runs this
+  plugin's hourly cleanup task on demand.
+- **phpcs** (Moodle coding style, `moodle` ruleset), with `local_codechecker` installed:
   ```bash
-  /home/ubuntu/moodles/m51/public/local/codechecker/vendor/bin/phpcs /home/ubuntu/moodles/m51/public/local/oauthmcp
+  <moodle_root>/local/codechecker/vendor/bin/phpcs <moodle_root>/local/oauthmcp
   ```
   `phpcbf` sits next to it and auto-fixes anything marked `[x]`.
 - **PHP syntax check:** `php -l <file>` — no Composer/build step, this is a flat Moodle
   plugin with no vendored dependencies.
-- There is no automated test suite yet. Verification so far has been direct: install via
-  `do-docker.sh upgrade`, then curl the endpoints and/or a small throwaway CLI script
+- There is no automated test suite yet. Verification so far has been direct: install/upgrade,
+  then curl the endpoints and/or a small throwaway CLI script
   (`define('CLI_SCRIPT', true); require('config.php');`) exercising
   `\local_oauthmcp\oauth\registry`/`helper` directly. See the commit history for examples of
   the exact checks run (metadata JSON shape, a real DCR round-trip, `registry::resolve()`'s
@@ -194,9 +192,8 @@ content):
 - **`\curl` needs `require_once($CFG->libdir . '/filelib.php')`** — not autoloaded like most
   Moodle core classes.
 
-## Consuming plugins on this Moodle install
+## Reference consumer
 
-- `mod_minilesson` (`/home/ubuntu/moodles/m51/public/mod/minilesson`) — reference consumer,
-  own git repo. Its `lib.php`'s `mod_minilesson_mcp_oauth_resources()` and
-  `oauth_resource_metadata.php` are the concrete example of the integration pattern
-  described above.
+`mod_minilesson` — own git repo, typically installed alongside this plugin. Its `lib.php`'s
+`mod_minilesson_mcp_oauth_resources()` and its `oauth_resource_metadata.php` are the
+concrete example of the integration pattern described above and in `README.md`.
