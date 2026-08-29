@@ -122,8 +122,10 @@ class provider implements
         if (!$context instanceof \context_system) {
             return;
         }
+        $affected = self::collect_grants('', []);
         $DB->delete_records('local_oauthmcp_codes');
         $DB->delete_records('local_oauthmcp_refresh');
+        self::revoke_grants($affected);
     }
 
     /**
@@ -135,12 +137,15 @@ class provider implements
     public static function delete_data_for_user(approved_contextlist $contextlist): void {
         global $DB;
 
+        $userid = $contextlist->get_user()->id;
         foreach ($contextlist->get_contexts() as $context) {
             if (!$context instanceof \context_system) {
                 continue;
             }
-            $DB->delete_records('local_oauthmcp_codes', ['userid' => $contextlist->get_user()->id]);
-            $DB->delete_records('local_oauthmcp_refresh', ['userid' => $contextlist->get_user()->id]);
+            $affected = self::collect_grants('userid = ?', [$userid]);
+            $DB->delete_records('local_oauthmcp_codes', ['userid' => $userid]);
+            $DB->delete_records('local_oauthmcp_refresh', ['userid' => $userid]);
+            self::revoke_grants($affected);
         }
     }
 
@@ -157,7 +162,45 @@ class provider implements
             return;
         }
         [$insql, $inparams] = $DB->get_in_or_equal($userlist->get_userids());
+        $affected = self::collect_grants("userid {$insql}", $inparams);
         $DB->delete_records_select('local_oauthmcp_codes', "userid {$insql}", $inparams);
         $DB->delete_records_select('local_oauthmcp_refresh', "userid {$insql}", $inparams);
+        self::revoke_grants($affected);
+    }
+
+    /**
+     * Snapshot the distinct (userid, resource) grants matching a WHERE clause on
+     * local_oauthmcp_refresh, before those rows are deleted.
+     *
+     * @param string $where a WHERE fragment ('' for all rows)
+     * @param array $params bound parameters for $where
+     * @return \stdClass[] rows with ->userid and ->resource
+     */
+    private static function collect_grants(string $where, array $params): array {
+        global $DB;
+
+        $sql = 'SELECT DISTINCT userid, resource FROM {local_oauthmcp_refresh}';
+        if ($where !== '') {
+            $sql .= ' WHERE ' . $where;
+        }
+        $grants = [];
+        $rs = $DB->get_recordset_sql($sql, $params);
+        foreach ($rs as $grant) {
+            $grants[] = $grant;
+        }
+        $rs->close();
+        return $grants;
+    }
+
+    /**
+     * Ask each affected resource to drop the web service token behind a now-deleted grant.
+     *
+     * @param \stdClass[] $grants rows from {@see self::collect_grants()}
+     * @return void
+     */
+    private static function revoke_grants(array $grants): void {
+        foreach ($grants as $grant) {
+            \local_oauthmcp\oauth\revoker::maybe_revoke_access_token($grant->resource, (int) $grant->userid);
+        }
     }
 }

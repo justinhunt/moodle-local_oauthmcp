@@ -36,6 +36,11 @@ namespace local_oauthmcp\oauth;
  *    the /authorize consent step and again on every refresh_token grant.
  *  - mintcallback (callable, required): `function(int $userid): string`, returning a real
  *    Moodle web service token for that user. May throw if the user is no longer permitted.
+ *  - revokecallback (callable, optional): `function(int $userid): void`, invoked by
+ *    \local_oauthmcp\oauth\revoker when a grant is revoked (reuse/theft detection, client
+ *    deletion, capability withdrawal, refresh-token expiry, privacy delete) so the plugin can
+ *    drop the web service token it minted. A declared-but-uncallable value is ignored with a
+ *    DEBUG_DEVELOPER notice rather than skipping the whole resource.
  *  - description (string, optional): shown on the consent screen in place of the generic
  *    "this site's AI tools" wording.
  *
@@ -126,12 +131,20 @@ class registry {
             debugging("{$component}: mcp_oauth_resources() entry's mintcallback is not callable", DEBUG_DEVELOPER);
             return null;
         }
+        if (isset($entry['revokecallback']) && !is_callable($entry['revokecallback'])) {
+            debugging(
+                "{$component}: mcp_oauth_resources() entry's revokecallback is not callable; ignoring it",
+                DEBUG_DEVELOPER
+            );
+            $entry['revokecallback'] = null;
+        }
         return (object) [
             'component' => $component,
             'resource' => $entry['resource'],
             'scope' => $entry['scope'],
             'capability' => $entry['capability'],
             'mintcallback' => $entry['mintcallback'],
+            'revokecallback' => $entry['revokecallback'] ?? null,
             'description' => $entry['description'] ?? null,
         ];
     }

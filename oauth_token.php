@@ -30,6 +30,7 @@
  */
 
 use local_oauthmcp\oauth\registry;
+use local_oauthmcp\oauth\revoker;
 
 define('NO_DEBUG_DISPLAY', true);
 define('NO_MOODLE_COOKIES', true);
@@ -208,11 +209,15 @@ if ($granttype === 'authorization_code') {
         oauth_token_error('invalid_grant', 'Unknown refresh token');
     }
     if ($row->revoked) {
-        // Reuse of an already-rotated-away token: treat as compromise, kill the whole chain.
-        $DB->set_field('local_oauthmcp_refresh', 'revoked', 1, ['familyid' => $row->familyid]);
+        // Reuse of an already-rotated-away token: treat as compromise, kill the whole chain
+        // and tell the resource to drop the access token behind it.
+        revoker::revoke_family($row->familyid);
         oauth_token_error('invalid_grant', 'This refresh token has already been used');
     }
     if (!empty($row->expires) && $row->expires < time()) {
+        // Outer lifetime reached: mark this row done and let the resource reclaim its token.
+        $DB->set_field('local_oauthmcp_refresh', 'revoked', 1, ['id' => $row->id]);
+        revoker::maybe_revoke_access_token($row->resource, (int) $row->userid);
         oauth_token_error('invalid_grant', 'This refresh token has expired');
     }
     if ($row->clientid !== $clientid) {
@@ -221,6 +226,10 @@ if ($granttype === 'authorization_code') {
 
     $resourceobj = oauth_token_resolve_resource($row->resource);
     if (!has_capability($resourceobj->capability, context_system::instance(), (int) $row->userid)) {
+        // Access was withdrawn since consent: kill this grant and its access token rather than
+        // leaving a usable token to expire on its own. The client must re-authorize (and pass
+        // the consent-screen capability check) if access is ever restored.
+        revoker::revoke_family($row->familyid);
         oauth_token_error('invalid_grant', 'The user is no longer permitted to use this service');
     }
 

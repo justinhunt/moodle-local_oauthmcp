@@ -111,10 +111,25 @@ if ($action === 'create') {
 } else if ($action === 'delete' && $actionclientid !== '') {
     require_sesskey();
     // Deleting a client kills its outstanding grants immediately rather than leaving them
-    // to expire naturally.
+    // to expire naturally. Capture which (user, resource) grants are affected first, so the
+    // resources can be asked to drop the web service tokens behind them once the rows are gone.
+    $affectedgrants = [];
+    $rs = $DB->get_recordset_sql(
+        'SELECT DISTINCT userid, resource FROM {local_oauthmcp_refresh} WHERE clientid = ?',
+        [$actionclientid]
+    );
+    foreach ($rs as $grant) {
+        $affectedgrants[] = $grant;
+    }
+    $rs->close();
+
     $DB->delete_records('local_oauthmcp_clients', ['clientid' => $actionclientid]);
     $DB->delete_records('local_oauthmcp_codes', ['clientid' => $actionclientid]);
     $DB->delete_records('local_oauthmcp_refresh', ['clientid' => $actionclientid]);
+
+    foreach ($affectedgrants as $grant) {
+        \local_oauthmcp\oauth\revoker::maybe_revoke_access_token($grant->resource, (int) $grant->userid);
+    }
     redirect(
         $thisurl,
         get_string('manageoauthclients_deleted', 'local_oauthmcp'),
