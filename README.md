@@ -20,12 +20,12 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`). 
   `/.well-known/oauth-protected-resource/mod/yourplugin/mcp.php`. Confirmed (2026-08-29) to
   be what Claude and Gemini Spark actually request.
 - **Bare form** — a `.well-known` discovery URL with no resource path at all, e.g.
-  `/.well-known/oauth-protected-resource`. Not needed by any client tested; the one rewrite
+  `/.well-known/oauth-protected-resource`. Not needed by any client tested. This is the one rewrite
   that could collide across multiple registered resources, which is why it's not recommended.
 - **Append form** — the well-known segment appended onto the *resource's own URL*, e.g.
   `/mod/yourplugin/mcp.php/.well-known/openid-configuration`. What ChatGPT requests; handled
-  entirely in code (step 4 below), no server config needed.
-- **`mintcallback`** — the function a consuming plugin declares in step 2 that returns a real
+  entirely in code (step 4 below), no web server config needed.
+- **`mintcallback`** — the function a consuming plugin declares in step 2 that returns a
   Moodle web-service token for a user; this is what `/token` hands back as the OAuth access
   token.
 - **`revokecallback`** — the optional function a consuming plugin declares to invalidate the
