@@ -65,7 +65,7 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`). 
 - **Consent screen** — the page a logged-in user sees at `/authorize`, where approving the
   request is the plugin's actual security boundary.
 
-## What it is not
+## What this plugin is not
 
 - **Not an OAuth client.** It does not log Moodle users in to external identity providers.
   That is Moodle core's `auth_oauth2`, which points the opposite direction.
@@ -80,7 +80,7 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`). 
   didn't create yourself, and `moodle/webservice:managealltokens` is in no role by default.
   Audit and revoke these through the plugin's own flow (see "Revocation"), not that page.
 
-## What it does
+## What this plugin does
 
 Once installed, it exposes a complete authorization-server surface at
 `/local/oauthmcp/…`, handled centrally so no consuming plugin has to:
