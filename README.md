@@ -396,13 +396,7 @@ That's it — **no bare forms needed, and no collision risk.** Every rule above 
 resource (or, for the authorization server, this plugin's own fixed path) directly in the
 pattern, so any number of consuming plugins can each add their own protected-resource line
 without stepping on each other. There's no reason to add the *bare* forms
-(`^/\.well-known/oauth-protected-resource$` with no resource path, and its
-authorization-server/openid-configuration equivalents) — confirmed live against Claude and
-Gemini Spark on 2026-08-29 that neither one falls back to, or even attempts, the bare form
-when the insert form above is present. The bare protected-resource form is also the one rule
-that *would* be genuinely unsafe on a multi-resource site (it names no resource, so it can
-only ever point at one plugin), so leaving it out entirely is both simpler and one less thing
-to revisit later.
+(`^/\.well-known/oauth-protected-resource$`
 
 `oauth_metadata.php` deliberately never gates on `PATH_INFO`, so a rewrite reaching it by an
 unexpected path is harmless. **Never** ship a bare `RewriteEngine`/`RewriteRule` in a
