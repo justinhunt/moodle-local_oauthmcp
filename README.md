@@ -37,18 +37,18 @@ Once installed, it exposes a complete authorization-server surface at
 | `oauth_register.php` | RFC 7591 Dynamic Client Registration. Public clients only (`token_endpoint_auth_method: "none"`), open and unauthenticated. |
 | `oauth_authorize.php` | `/authorize` — the consent screen. PKCE **S256 mandatory**; `plain` or missing `code_challenge` is rejected. Resolves CIMD (`client_id`-as-URL) clients. |
 | `oauth_token.php` | `/token` — `authorization_code` and `refresh_token` grants. Calls the consuming plugin's `mintcallback` to produce the real token. |
-| `manageoauthclients.php` | Admin UI (Site admin ▸ Plugins ▸ Local plugins) for manually creating clients — the fallback path for Google/Gemini, whose DCR always requests a confidential client and is refused by design. |
+| `manageoauthclients.php` | Admin UI (Site admin ▸ Plugins ▸ Local plugins) for manually creating client ID and Secret— the fallback path for Google/Gemini, whose DCR always requests a confidential client and is refused by design. |
 
-Also handled for you: refresh-token rotation with reuse/theft detection (reuse revokes the
-whole rotation family), cooperative teardown of the underlying web-service token on
-revocation (via your optional `revokecallback` — see "Revocation" below), CIMD document
-fetch/validation (through Moodle's `\curl`, so the `curl_security_helper` SSRF blocklist
-applies), an hourly `oauth_cleanup` scheduled task, and three backup-excluded DB tables
-(`local_oauthmcp_clients`, `_codes`, `_refresh`).
+Also handled : 
+* refresh-token rotation with reuse/theft detection (reuse revokes the whole rotation family)
+* cooperative teardown of the underlying web-service token on revocation (via your optional `revokecallback` — see "Revocation" below), 
+* CIMD document fetch/validation (through Moodle's `\curl`, so the `curl_security_helper` SSRF blocklist applies)
+* an hourly `oauth_cleanup` scheduled task
+* three backup-excluded DB tables (`local_oauthmcp_clients`, `_codes`, `_refresh`).
 
 ### Security model
 
-Registering a client via DCR (Dynamic Client Registration) or via this plugin's manageoauthclients admin page grants it nothing. The real security check is a logged-in Moodle user clicking "Allow" on the /authorize consent screen. That authorizes the AI agent to act on their behalf. Access to that screen is gated on a capability the consumer plugin declares (e.g. mod/minilesson:usemcp), checked at CONTEXT_SYSTEM — so a user must be granted it site-wide (site admins bypass). It's re-checked on every token refresh.
+Registering a client via DCR (Dynamic Client Registration) or via this plugin's manageoauthclients.php admin does not grant the client any access. The real security check is a logged-in Moodle user clicking "Allow" on the /authorize consent screen. That authorizes the AI agent to act on their behalf. Access to that screen is restricted by a capability the consumer plugin declares (e.g. mod/minilesson:usemcp). That is checked at CONTEXT_SYSTEM — so a user must be granted it site-wide (site admins bypass it). It's re-checked on every token refresh.
 
 ## The public API
 
@@ -392,11 +392,7 @@ RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.p
 RewriteRule ^/\.well-known/oauth-protected-resource/mod/yourplugin/mcp\.php$ /mod/yourplugin/oauth_resource_metadata.php [L]
 ```
 
-That's it — **no bare forms needed, and no collision risk.** Every rule above names the
-resource (or, for the authorization server, this plugin's own fixed path) directly in the
-pattern, so any number of consuming plugins can each add their own protected-resource line
-without stepping on each other. There's no reason to add the *bare* forms
-(`^/\.well-known/oauth-protected-resource$`
+That's it — There's no reason to add the *bare* forms e.g. `^/\.well-known/oauth-protected-resource$`
 
 `oauth_metadata.php` deliberately never gates on `PATH_INFO`, so a rewrite reaching it by an
 unexpected path is harmless. **Never** ship a bare `RewriteEngine`/`RewriteRule` in a
