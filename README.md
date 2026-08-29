@@ -11,6 +11,60 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`). 
 - **Maturity:** alpha (`0.2.0`).
 - **Licence:** GNU GPL v3 or later.
 
+## Glossary
+
+### Terms unique to this README
+
+- **Insert form** — a `.well-known` discovery URL with the resource's (or the authorization
+  server's own) path spliced in right after the well-known segment, e.g.
+  `/.well-known/oauth-protected-resource/mod/yourplugin/mcp.php`. Confirmed (2026-08-29) to
+  be what Claude and Gemini Spark actually request.
+- **Bare form** — a `.well-known` discovery URL with no resource path at all, e.g.
+  `/.well-known/oauth-protected-resource`. Not needed by any client tested; the one rewrite
+  that could collide across multiple registered resources, which is why it's not recommended.
+- **Append form** — the well-known segment appended onto the *resource's own URL*, e.g.
+  `/mod/yourplugin/mcp.php/.well-known/openid-configuration`. What ChatGPT requests; handled
+  entirely in code (step 4 below), no server config needed.
+- **`mintcallback`** — the function a consuming plugin declares in step 2 that returns a real
+  Moodle web-service token for a user; this is what `/token` hands back as the OAuth access
+  token.
+- **`revokecallback`** — the optional function a consuming plugin declares to invalidate the
+  token `mintcallback` produced, called whenever an OAuth grant is torn down (see
+  "Revocation").
+- **CIMD (Client ID Metadata Document)** — a draft OAuth extension where `client_id` is
+  itself an `https://` URL pointing to a small JSON document describing the client, letting a
+  client (e.g. Claude) skip Dynamic Client Registration entirely.
+
+### OAuth / RFC terms
+
+- **Authorization server (AS)** — the party that authenticates the user and issues tokens;
+  that's this plugin.
+- **Protected resource** — the API being accessed on the user's behalf; a consuming plugin's
+  `mcp.php`.
+- **Resource** — in this document, always the OAuth sense above (a protected API endpoint),
+  not a Moodle "resource" activity.
+- **Bearer token** — a token that grants access to whoever holds it, sent as
+  `Authorization: Bearer <token>`.
+- **Access token** — the credential a client sends on every API call; here, a real Moodle
+  web-service token.
+- **Refresh token** — a longer-lived credential exchanged at `/token` for a fresh access
+  token, without the user re-authorizing.
+- **Refresh token family** — the set of refresh tokens produced by rotating a single original
+  grant; reusing an already-rotated token revokes the whole family (theft/replay detection).
+- **PKCE (Proof Key for Code Exchange)** — a challenge/verifier pair that binds an
+  authorization code to the client that requested it; `S256` is the hashed variant, mandatory
+  here.
+- **DCR (Dynamic Client Registration)** — a client registering itself with the authorization
+  server at runtime (`/register`), rather than an admin creating it by hand.
+- **Confidential client** — a client that can hold a secret (e.g. a server-side app); can
+  authenticate itself with `client_secret_post`.
+- **Public client** — a client that can't safely hold a secret (e.g. a browser-based or
+  native app); relies on PKCE instead. This plugin's DCR only ever creates public clients.
+- **Scope** — a named bundle of access a token grants; descriptive here, one per registered
+  resource.
+- **Consent screen** — the page a logged-in user sees at `/authorize`, where approving the
+  request is the plugin's actual security boundary.
+
 ## What it is not
 
 - **Not an OAuth client.** It does not log Moodle users in to external identity providers.
