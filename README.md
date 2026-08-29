@@ -351,8 +351,9 @@ Fix, in the `<Directory>` for the Moodle docroot (or `.htaccess`):
 CGIPassAuth On
 ```
 
-`CGIPassAuth`'s context is `directory, .htaccess` only — Apache errors if you put it bare in
-`<VirtualHost>`. It needs Apache ≥ 2.4.13 (any currently supported release). It covers the
+`CGIPassAuth`'s context is in a `directory` block in a virtual hosts file, or in an `.htaccess` file.
+Apache errors if you put it bare in `<VirtualHost>`.
+It needs Apache ≥ 2.4.13 (any currently supported release). This covers the
 FastCGI/PHP-FPM case; per the mod_minilesson notes it also cleared a `mod_php` dev-container
 instance of the same symptom.
 
