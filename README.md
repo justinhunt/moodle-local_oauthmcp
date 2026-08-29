@@ -369,44 +369,40 @@ also fall back to `REDIRECT_HTTP_AUTHORIZATION` and accept `X-API-Key` — that 
 `mod_rewrite`/CGI setups, but it does **not** substitute for the fix above against FPM
 stripping.)
 
-### b) Domain-root `.well-known` rewrites — *optional, per client*
+### b) Domain-root `.well-known` insert-form rewrites
 
 The plugin serves discovery entirely from its own path (step 4) with zero server config, and
-that is enough for **ChatGPT**. But as of 2026-08, **Claude** and **Gemini Spark** only
-probe **domain-root** `.well-known` URLs when connecting cold — they never follow the
-`resource_metadata=` pointer on the `401`, nor the append-onto-`mcp.php` form. When the mcp resource is in a Moodle subdirectory (which they will be) they fail discovery without these `RewriteRule`s in the `<VirtualHost>` :
-
-**Authorization-server forms — safe on any site** (exactly one per virtual host, no collision):
-
-```apache
-RewriteRule ^/\.well-known/oauth-authorization-server$ /local/oauthmcp/oauth_metadata.php [L]
-RewriteRule ^/\.well-known/openid-configuration$        /local/oauthmcp/oauth_metadata.php [L]
-```
-
-**Protected-resource forms.** Needed for Gemini Spark. Unlike the authorization-server forms these are
-per-plugin, so a multi-resource site needs care:
+that is enough for **ChatGPT**. **Claude** and **Gemini Spark**, as of 2026-08, need one more
+thing: they request the RFC 8414 **insert** form at the domain root — the well-known segment
+with the resource's (or the authorization server's own) path spliced in right after it, e.g.
+`/.well-known/oauth-protected-resource/mod/yourplugin/mcp.php`. That specific form isn't
+served by anything in this plugin or in Moodle's own routing (a plugin cannot claim a literal
+site-root path — see the design notes if you're curious why), so it needs one `RewriteRule`
+per document:
 
 ```apache
-RewriteRule ^/\.well-known/oauth-protected-resource$                          /mod/yourplugin/oauth_resource_metadata.php [L]
-RewriteRule ^/\.well-known/oauth-protected-resource/mod/yourplugin/mcp\.php$  /mod/yourplugin/oauth_resource_metadata.php [L]
+# Authorization-server metadata — one per site, needed by both Claude and Spark
+RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
+
+# Optional belt-and-braces alias — not observed as needed by either client, but RFC 8414 §3.3
+# allows either well-known suffix for the same document, and it costs nothing to add.
+RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
+
+# Protected-resource metadata — one per registered resource, needed by both Claude and Spark
+RewriteRule ^/\.well-known/oauth-protected-resource/mod/yourplugin/mcp\.php$ /mod/yourplugin/oauth_resource_metadata.php [L]
 ```
 
-Of the two, only the **first (bare) form collides.** The bare
-`/.well-known/oauth-protected-resource` names no resource, so it can point at exactly one
-plugin — safe only while exactly one resource is registered. The **second (insert) form**
-names the resource in the path (`…/mod/yourplugin/mcp.php`), so it never collides: with two
-or more resources registered, add one insert rule per resource, each pointing at that
-plugin's own `oauth_resource_metadata.php`.
-
-The bare rule still can't be made to serve more than one. A client that falls back to it for
-any other resource gets that one plugin's metadata instead, authorizes against the wrong
-resource, and ends up with a token the intended endpoint rejects. Claude and Gemini Spark
-have both been observed issuing the bare form (Spark also the insert form; Claude's exact
-sequence isn't fully characterised), so on a genuinely multi-resource site treat domain-root
-discovery as unreliable for those two: point the bare rule at whichever resource matters
-most, keep an insert rule per resource, and expect the others to need a pointer-following
-client (ChatGPT, or anything that honours the `401` `resource_metadata=` value). The
-authorization-server rules above stay correct no matter how many resources exist.
+That's it — **no bare forms needed, and no collision risk.** Every rule above names the
+resource (or, for the authorization server, this plugin's own fixed path) directly in the
+pattern, so any number of consuming plugins can each add their own protected-resource line
+without stepping on each other. There's no reason to add the *bare* forms
+(`^/\.well-known/oauth-protected-resource$` with no resource path, and its
+authorization-server/openid-configuration equivalents) — confirmed live against Claude and
+Gemini Spark on 2026-08-29 that neither one falls back to, or even attempts, the bare form
+when the insert form above is present. The bare protected-resource form is also the one rule
+that *would* be genuinely unsafe on a multi-resource site (it names no resource, so it can
+only ever point at one plugin), so leaving it out entirely is both simpler and one less thing
+to revisit later.
 
 `oauth_metadata.php` deliberately never gates on `PATH_INFO`, so a rewrite reaching it by an
 unexpected path is harmless. **Never** ship a bare `RewriteEngine`/`RewriteRule` in a
@@ -441,23 +437,20 @@ than using this verbatim.
         CGIPassAuth On
     </Directory>
 
-    # Domain-root OAuth discovery shims for clients that only probe /.well-known/*
-    # (Claude, Gemini Spark). Safe while mod_minilesson is the ONLY registered resource —
-    # revisit the oauth-protected-resource rules if a second plugin registers one (see above).
+    # Domain-root OAuth discovery shims for Claude and Gemini Spark (confirmed 2026-08-29 —
+    # both use the RFC 8414 insert form below, neither needs or falls back to the bare form,
+    # so there is nothing here that can collide across multiple registered resources).
     <IfModule mod_rewrite.c>
         RewriteEngine On
 
-        # Authorization-server metadata -> local_oauthmcp (one authorization server per site, no collision)
-        RewriteRule ^/\.well-known/oauth-authorization-server$ /local/oauthmcp/oauth_metadata.php [L]
-        RewriteRule ^/\.well-known/openid-configuration$        /local/oauthmcp/oauth_metadata.php [L]
-        # RFC 8414 / OIDC "insert" form (issuer path appended) — optional, belt-and-braces
+        # Authorization-server metadata -> local_oauthmcp (one authorization server per site)
         RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
+        # Optional belt-and-braces alias — not observed as needed, costs nothing to keep
         RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
 
         # Protected-resource metadata -> the one registered resource (mod_minilesson).
-        # Specific (insert) form first, bare form second.
+        # Add one more line like this per additional registered resource — they never collide.
         RewriteRule ^/\.well-known/oauth-protected-resource/mod/minilesson/mcp\.php$ /mod/minilesson/oauth_resource_metadata.php [L]
-        RewriteRule ^/\.well-known/oauth-protected-resource$                         /mod/minilesson/oauth_resource_metadata.php [L]
     </IfModule>
 
     # ... your normal Moodle vhost directives (PHP handler / proxy_fcgi, logging, etc.)
