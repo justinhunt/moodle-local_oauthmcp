@@ -118,7 +118,9 @@ Everything else in `classes/` (`oauth\registry`, `oauth\helper`, `oauth\revoker`
 
 ## How a plugin becomes a consumer
 
-A consuming plugin can be any Moodle component but it has only been tested with activity modules. There are four steps:
+A consuming plugin can be any Moodle component — confirmed against both an activity module
+(`mod_minilesson`) and a `local_` plugin (`local_hellomcp`, a minimal single-tool reference
+implementation of this section, worth reading alongside it). There are four steps:
 
 ### 1. Install this plugin
 
@@ -537,9 +539,14 @@ One consequence: if a client omits the OAuth `resource` parameter, `registry::re
 falls back to "the one registered resource" **only when exactly one is registered**. With
 two or more, an omitted `resource` fails closed (`invalid_target`) rather than guessing.
 
-## Reference consumer
+## Reference consumers
 
-`mod_minilesson` is the reference and first consumer (its own git repo). Its
-`mod_minilesson_mcp_oauth_resources()` in `lib.php` and its `oauth_resource_metadata.php` are
-the concrete example of the integration pattern above.
-see it at: [https://github.com/justinhunt/moodle-mod_minilesson](https://github.com/justinhunt/moodle-mod_minilesson)
+- **`local_hellomcp`** — a minimal, single-tool worked example built purely to demonstrate
+  this integration pattern in isolation: `lib.php`'s resource declaration, `mcp.php`, and
+  `oauth_resource_metadata.php` are the whole thing, with no product-specific code around
+  them. Start here if you're wiring up a new plugin.
+- **`mod_minilesson`** — the first real-world (production) consumer, and the plugin this
+  authorization server was originally extracted from (its own git repo). Its
+  `mod_minilesson_mcp_oauth_resources()` in `lib.php` and its `oauth_resource_metadata.php`
+  are the same pattern applied inside a much larger plugin.
+  See it at: [https://github.com/justinhunt/moodle-mod_minilesson](https://github.com/justinhunt/moodle-mod_minilesson)
