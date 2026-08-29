@@ -64,8 +64,7 @@ Everything else in `classes/` (`oauth\registry`, `oauth\helper`, `oauth\revoker`
 
 ## How a plugin becomes a consumer
 
-A consuming plugin can be any Moodle component referred to by its frankenstyle name (`mod_`, `local_`, …). All the code
-lives in that plugin; nothing here needs editing. Four pieces:
+A consuming plugin can be any Moodle component but it has only been tested with activity modules. There are four steps:
 
 ### 1. Install this plugin
 
