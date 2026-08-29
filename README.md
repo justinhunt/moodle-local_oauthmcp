@@ -488,24 +488,4 @@ two or more, an omitted `resource` fails closed (`invalid_target`) rather than g
 `mod_minilesson` is the reference and first consumer (its own git repo). Its
 `mod_minilesson_mcp_oauth_resources()` in `lib.php` and its `oauth_resource_metadata.php` are
 the concrete example of the integration pattern above.
-
-## Development
-
-Flat Moodle plugin — no Composer, no build step.
-
-```bash
-# PHP syntax check
-php -l <file>
-
-# Moodle coding style (run from your Moodle root, with local_codechecker installed)
-local/codechecker/vendor/bin/phpcs local/oauthmcp
-```
-
-Install or upgrade the normal way (`php admin/cli/upgrade.php`, or the web UI). **Purge
-caches after any change that affects resource discovery** — the registry is rebuilt from
-`get_plugins_with_function()` scans. The hourly `oauth_cleanup` scheduled task purges expired
-authorization codes and long-revoked refresh rows.
-
-There is no automated test suite yet; verification is by installing and exercising the
-endpoints, or calling `\local_oauthmcp\oauth\registry` / `\local_oauthmcp\oauth\helper`
-directly from a short CLI script.
+see it at: [https://github.com/justinhunt/moodle-mod_minilesson](https://github.com/justinhunt/moodle-mod_minilesson)
