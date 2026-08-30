@@ -4,7 +4,7 @@ A shared **OAuth 2.1 authorization server** for MCP-enabled Moodle plugins.
 
 AI agents can authenticate with an MCP server using a bearer token directly or obtaining one via OAuth. Moodle has a system for generating web service tokens and these work fine with MCP as bearer tokens if the agent supports it. But recently AI clients connector UI settings only accept OAuth information (ie not a token) e.g Claude.ai (web), ChatGPT connectors, and Google Gemini Spark.  This plugin uses the existing Moodle web-service token system but wraps it in an OAuth 2.1 server.
 
-It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`). The MCP-enabled plugin will already support token based authentication, and this plugin (local_oauthmcp) gives it a way to wrap that in an OAuth server. The MCP-enabled plugin will return OAuth connection information to the AI agent (ie the MCP client) that points to the URLs exposed by this plugin.
+It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`, `local_hellomcp`). The MCP-enabled plugin will already support token based authentication, and this plugin (local_oauthmcp) gives it a way to wrap that in an OAuth server. The MCP-enabled plugin will return OAuth connection information to the AI agent (ie the MCP client) that points to the URLs exposed by this plugin.
 
 - **Type:** `local` plugin (`public/local/oauthmcp`)
 - **Requires:** Moodle 4.3+ (`2023100900`).
@@ -91,7 +91,7 @@ Once installed, it exposes a complete authorization-server surface at
 | `oauth_register.php` | RFC 7591 Dynamic Client Registration. Public clients only (`token_endpoint_auth_method: "none"`), open and unauthenticated. |
 | `oauth_authorize.php` | `/authorize` — the consent screen. PKCE **S256 mandatory**; `plain` or missing `code_challenge` is rejected. Resolves CIMD (`client_id`-as-URL) clients. |
 | `oauth_token.php` | `/token` — `authorization_code` and `refresh_token` grants. Calls the consuming plugin's `mintcallback` to produce the real token. |
-| `manageoauthclients.php` | Admin UI (Site admin ▸ Plugins ▸ Local plugins) for manually creating client ID and Secret— the fallback path for Google/Gemini, whose DCR always requests a confidential client and is refused by design. |
+| `manageoauthclients.php` | Admin page (Site admin ▸ Plugins ▸ Local plugins) for manually creating client ID and Secret— the fallback path for Google/Gemini and similar clients, whose DCR always requests a confidential client and is refused by design. |
 
 Also handled : 
 * refresh-token rotation with reuse/theft detection (reuse revokes the whole rotation family)
@@ -102,7 +102,7 @@ Also handled :
 
 ### Security model
 
-Registering a client via DCR (Dynamic Client Registration) or via this plugin's manageoauthclients.php admin does not grant the client any access. The real security check is a logged-in Moodle user clicking "Allow" on the /authorize consent screen. That authorizes the AI agent to act on their behalf. Access to that screen is restricted by a capability the consumer plugin declares (e.g. mod/minilesson:usemcp). That is checked at CONTEXT_SYSTEM — so a user must be granted it site-wide (site admins bypass it). It's re-checked on every token refresh.
+Registering a client via DCR (Dynamic Client Registration) or via this plugin's manageoauthclients.php admin page does not grant the client any access. The real security check is a logged-in Moodle user clicking "Allow" on the /authorize consent screen. That authorizes the AI agent to act on their behalf. Access to that screen is restricted by a capability the consumer plugin declares (e.g. local/hellomcp:usemcp). That is checked at CONTEXT_SYSTEM — so a user must be granted it site-wide (site admins bypass it). It's re-checked on every token refresh.
 
 ## The public API
 
@@ -116,7 +116,7 @@ Registering a client via DCR (Dynamic Client Registration) or via this plugin's 
 
 Everything else in `classes/` (`oauth\registry`, `oauth\helper`, `oauth\revoker`) is internal.
 
-## How a plugin becomes a consumer
+## How to use this with your plugin
 
 A consuming plugin can be any Moodle component. There are four steps:
 
@@ -127,9 +127,7 @@ must not depend on it being present (see step 4).
 
 ### 2. Declare your resource in your `lib.php`
 
-Add a `<frankenstyle name>_mcp_oauth_resources()` function. Moodle discovers it via
-`get_plugins_with_function('mcp_oauth_resources', 'lib.php')` — the same mechanism as
-`<component>_extend_navigation()`. 
+Add a `<frankenstyle name>_mcp_oauth_resources()` function, that lets Moodle discover it.
 
 ```php
 function mod_yourplugin_mcp_oauth_resources(): array {
@@ -141,7 +139,8 @@ function mod_yourplugin_mcp_oauth_resources(): array {
             'resource'     => $CFG->wwwroot . '/mod/yourplugin/mcp.php',
 
             // Single scope name for this resource.
-            // A single short string naming the bundle of access this resource represents. mod_minilesson uses 'aigen'.
+            // A single short string naming the bundle of access this resource represents.
+            // mod_minilesson uses 'aigen'. local_hellomcp uses 'hellomcp'.
             // Descriptive only, it does not affect access
             'scope'        => 'yourscope',
 
@@ -172,14 +171,22 @@ notice) rather than taking the whole resource down, since it is optional.
 
 ### 3. Implement `revoke_tokens()` and `mint_or_reuse_token()`
 
-Full example is provided below (a `facade` class in your plugin — modelled on `mod_minilesson`'s):
+These are used to get the actual web-service tokens that OAuth client needs to access the MCP service, and to revoke them when necessary. A Full example is provided below.
 
 `mintcallback` must return a **token string** for one of *your own* Moodle external
 services — the service whose functions your `mcp.php` brokers, declared in your plugin's
 `db/services.php`. This is the token the AI client will send back as a bearer token on every
-MCP request, so it has to be a row your normal request-time auth path already accepts.
+MCP request.
 
-`revokecallback()` is optional and returns nothing — its job is to invalidate what mintcallback handed out, normally a one-line `$DB->delete_records('external_tokens', …)` for the same (userid, service) rows. It exists because that access token is a real web-service token this plugin didn't create and can't delete on its own, so without the hook it stays usable until its own validuntil even after the user's OAuth grant is gone. \local_oauthmcp\oauth\revoker calls it when a grant is torn down — refresh-token reuse/theft detection, the capability being withdrawn, a refresh token passing its outer lifetime, an admin deleting the client, or a privacy delete request — but only once that user has no other live grant for the same resource, since a consumer typically reuses one shared token across every client. It's best-effort: a throw is downgraded to a DEBUG_DEVELOPER notice, there is no retry, and it can be called when there's already nothing to delete — so keep it a plain, idempotent delete.
+`revokecallback()` is optional and returns nothing — its job is to invalidate what mintcallback handed out, normally a one-line `$DB->delete_records('external_tokens', …)` for the same (userid, service) rows. It exists because that access token is a real web-service token this plugin (local_oauthmcp) didn't create and can't delete on its own. Without the revokecallback() it stays usable until its own validuntil, even after the user's OAuth grant is gone. \local_oauthmcp\oauth\revoker calls it when:
+
+* refresh-token reuse/theft is detected;
+* the capability is withdrawn;
+* a refresh token passes its outer lifetime;
+* an admin deletes a client;
+* a user requests deletion of their data;
+
+But this is only once that user has no other live grant for the same resource, since a consumer typically reuses one shared token across every client. It's best-effort: a throw is downgraded to a DEBUG_DEVELOPER notice, there is no retry, and it can be called when there's already nothing to delete — so keep it a plain, idempotent delete.
 
 ```php
 namespace mod_yourplugin\local;
@@ -406,9 +413,7 @@ CGIPassAuth On
 
 `CGIPassAuth`'s context is in a `directory` block in a virtual hosts file, or in an `.htaccess` file.
 Apache errors if you put it bare in `<VirtualHost>`.
-It needs Apache ≥ 2.4.13 (any currently supported release). This covers the
-FastCGI/PHP-FPM case; per the mod_minilesson notes it also cleared a `mod_php` dev-container
-instance of the same symptom.
+It needs Apache ≥ 2.4.13 (any currently supported release).
 
 nginx + PHP-FPM equivalent, in the `location ~ \.php$` block:
 
@@ -458,7 +463,7 @@ Client discovery behaviour changes without notice — it is worth re-testing all
 
 ### Full vhost example
 
-Both fixes together, for a single-resource site (`mod_minilesson` the only registered
+Both fixes together, for a single-resource site (`local_hellomcp` the test
 resource). Merge the `CGIPassAuth` line and the rewrite block into your real vhost rather
 than using this verbatim.
 
@@ -492,9 +497,9 @@ than using this verbatim.
         # Optional belt-and-braces alias — not observed as needed, costs nothing to keep
         RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
 
-        # Protected-resource metadata -> the one registered resource (mod_minilesson).
+        # Protected-resource metadata -> the one registered resource (local_hellomcp).
         # Add one more line like this per additional registered resource — they never collide.
-        RewriteRule ^/\.well-known/oauth-protected-resource/mod/minilesson/mcp\.php$ /mod/minilesson/oauth_resource_metadata.php [L]
+        RewriteRule ^/\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [L]
     </IfModule>
 
     # ... your normal Moodle vhost directives (PHP handler / proxy_fcgi, logging, etc.)
