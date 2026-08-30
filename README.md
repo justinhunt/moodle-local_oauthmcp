@@ -544,10 +544,7 @@ two or more, an omitted `resource` fails closed (`invalid_target`) rather than g
 
 ## Reference consumers
 
-- **`local_hellomcp`** — a minimal, single-tool working example built to demonstrate
-  this integration pattern: `lib.php`'s resource declaration, `mcp.php`, and
-  `oauth_resource_metadata.php` are the whole thing. There is no real product-specific code around
-  them. Start here if you're wiring up a new plugin.
+- **`local_hellomcp`** — a minimal, working example of an MCP enabled Moodle plugin with Oauth support. Start here if you're wiring up a new plugin.
   See it at: [https://github.com/justinhunt/moodle-local_hellomcp](https://github.com/justinhunt/moodle-local_hellomcp)
 
 - **`mod_minilesson`** — the original real-world (production) consumer.
