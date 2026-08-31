@@ -74,11 +74,6 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`, `
   consumer plugin's `mintcallback` via core's `external_generate_token()`, the same routine
   the "Create token" admin button uses. 
   
-  NB Because `/token` is sessionless the row is stamped
-  with no creator (`creatorid = 0`), so it does **not** appear in *Site admin ▸ Server ▸ Web
-  services ▸ Manage tokens* for anyone below full site admin — that page hides tokens you
-  didn't create yourself, and `moodle/webservice:managealltokens` is in no role by default.
-  Audit and revoke these through the plugin's own flow (see "Revocation"), not that page.
 
 ## What this plugin does
 
@@ -122,7 +117,7 @@ A consuming plugin can be any Moodle component. There are four steps:
 
 ### 1. Install this plugin
 
-Install `local_oauthmcp` once per site the usual way. Your plugin's core functionality
+Install `local_oauthmcp` the usual way. Your plugin's core functionality
 must not depend on it being present (see step 4).
 
 ### 2. Declare your resource in your `lib.php`
