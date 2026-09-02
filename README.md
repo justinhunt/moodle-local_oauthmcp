@@ -29,10 +29,10 @@ There are no settings to configure. Though in some cases you may need to use the
 
 ### 2. Per-connector setup
 
-- **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings 
-  login into Moodle and approve the "Allow" consent screen when it appears.
-- **Claude.ai (web)** — Add the consumer plugin's MCP URL in the connector's own settings 
-  login to Moodle and approve the "Allow" consent screen when it appears.
+- **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings. 
+  Login into Moodle if asked, and approve the "Allow" consent screen when it appears.
+- **Claude.ai (web)** — Add the consumer plugin's MCP URL in the connector's own settings. 
+  Login to Moodle if asked, and approve the "Allow" consent screen when it appears.
   NB Web server config. probably needed 
 - **Google Gemini Spark** — Needs a client created by hand by the Moodle site administrator.
   It and similar agents will give you  a redirect URL. 
@@ -54,8 +54,7 @@ symptom you actually see. It is the same for every consumer plugin.
 
 **Cause:** Some web server PHP extensions by default strip the headers we need. PHP-FPM is one. 
 
-**Apache** — in the `<Directory>` for the Moodle web root, or in `.htaccess` (needs Apache
-≥ 2.4.13; it errors if put bare in `<VirtualHost>`):
+**Apache** — inside the `<Directory>` block for the Moodle web root (it errors if put bare in `<VirtualHost>`), or in `.htaccess` :
 
 ```apache
 CGIPassAuth On
@@ -75,11 +74,9 @@ server.
 
 **Cause:** Claude and Spark only look for discovery documents at fixed domain-root paths such
 as `/.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata.php`. The plugin
-serves those same documents from its own path, but nothing answers that literal root path
-without a rewrite.
+serves those same documents from its own path, so it needs a rewrite to find them.
 
-**Apache** — one `RewriteRule` per document. Add one protected-resource line per consumer
-plugin (they never collide):
+**Apache** — one `RewriteRule` per discovery document. And one rule per consumer plugin:
 
 ```apache
 <IfModule mod_rewrite.c>
@@ -89,7 +86,7 @@ plugin (they never collide):
     RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
     RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
 
-    # Protected-resource metadata — one line per consumer plugin
+    # Protected-resource metadata — one line per consumer plugin (CHANGE THIS for mod/minilesson or other plugin)
     RewriteRule ^/\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [L]
 </IfModule>
 ```
@@ -125,7 +122,7 @@ notice, so re-test all three periodically.
         RewriteEngine On
         RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
         RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
-        # One line per consumer plugin: Change this to /mod/minilesson or whatever mcp plugin you are using
+        # One line per consumer plugin: (CHANGE THIS for /mod/minilesson or other plugin)
         RewriteRule ^/\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [L]
     </IfModule>
 
@@ -150,7 +147,7 @@ CGIPassAuth On
     # Patterns have NO leading slash here — Apache strips the directory prefix in .htaccess.
     RewriteRule ^\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [END]
     RewriteRule ^\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [END]
-    # One line per consumer plugin. Change this to /mod/minilesson or whatever mcp plugin you are using
+    # One line per consumer plugin. CHANGE THIS for /mod/minilesson or other plugin
     RewriteRule ^\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [END]
 </IfModule>
 ```
