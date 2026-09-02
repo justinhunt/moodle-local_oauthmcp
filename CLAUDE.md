@@ -172,7 +172,7 @@ content):
   it via an unexpected path can leave `PATH_INFO` populated with something surprising, and
   there's nothing worth protecting by rejecting an unexpected route to a single public,
   non-sensitive document.
-- **Domain-root Apache rewrites for `/.well-known/…`** (README "Server configuration §b"):
+- **Domain-root Apache rewrites for `/.well-known/…`** (README "Web server configuration §b"):
   - AS-metadata forms (`oauth-authorization-server`, `openid-configuration` →
     `oauth_metadata.php`) are safe on any site — one AS per site, no cross-plugin collision.
   - Protected-resource forms (`oauth-protected-resource` → a plugin's
@@ -188,7 +188,7 @@ content):
 - **Apache/PHP-FPM strips `Authorization: Bearer`** on many setups (also plain `mod_php`) —
   needs `CGIPassAuth On` in a `<Directory>`/`.htaccess` (errors bare in `<VirtualHost>`) or
   `SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1`. Site-wide admin fix, not code.
-  README "Server configuration §a".
+  README "Web server configuration §a".
 - **`\curl` needs `require_once($CFG->libdir . '/filelib.php')`** — not autoloaded like most
   Moodle core classes.
 

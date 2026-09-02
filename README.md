@@ -11,17 +11,167 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`, `
 - **Maturity:** alpha (`0.2.0`).
 - **Licence:** GNU GPL v3 or later.
 
+## Installation
+
+Most administrators install this plugin for one reason: so an OAuth-only AI connector —
+Claude.ai (web), ChatGPT, or Google Gemini Spark — can authorize against a Poodll MCP
+plugin such as **mod_minilesson** or **local_hellomcp**. `local_oauthmcp` does nothing on
+its own; it needs at least one such *consumer* plugin installed alongside it.
+
+### 1. Install the plugin
+
+Place the code at `local/oauthmcp` under the Moodle web root (the `public/` subdirectory on
+the Moodle 5.x layout) — through **Site administration ▸ Plugins ▸ Install plugins**, or by
+unpacking the ZIP / cloning the repository there by hand — then finish the upgrade at **Site
+administration ▸ Notifications** (or run `php admin/cli/upgrade.php`).
+
+There are no settings to configure. Though in some cases you may need to use the plugin's "Manage OAuth Clients" page to get a client id and secret (these are not the same as the Moodle username and password). Read on ..
+
+### 2. Per-connector setup
+
+- **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings 
+  login into Moodle and approve the "Allow" consent screen when it appears.
+- **Claude.ai (web)** — Add the consumer plugin's MCP URL in the connector's own settings 
+  login to Moodle and approve the "Allow" consent screen when it appears.
+  NB Web server config. probably needed 
+- **Google Gemini Spark** — Needs a client created by hand by the Moodle site administrator.
+  It and similar agents will give you  a redirect URL. 
+  Enter that at **Site administration ▸ Plugins ▸ Local plugins ▸ Manage OAuth clients**. 
+  The plugin will give you a client ID and secret to paste into Spark. Each Moodle user can use the same client ID and secret.
+  After that proceed as for ChatGPT. NB Web server config. probably needed 
+
+If a connector still cannot complete authorization after doing the steps above, the site probably 
+needs some web-server configuration. See [Web server configuration](#web-server-configuration).
+
+## Web server configuration
+
+Try connecting first — you may need none of this. Apply only the part that matches the
+symptom you actually see. It is the same for every consumer plugin.
+
+### a) Let PHP see the `Authorization` header
+
+**Symptom:** Nothing connects.
+
+**Cause:** Some web server PHP extensions by default strip the headers we need. PHP-FPM is one. 
+
+**Apache** — in the `<Directory>` for the Moodle web root, or in `.htaccess` (needs Apache
+≥ 2.4.13; it errors if put bare in `<VirtualHost>`):
+
+```apache
+CGIPassAuth On
+```
+
+**nginx** — in the `location ~ \.php$` block:
+
+```nginx
+fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+```
+
+
+### b) Domain-root `.well-known` rewrites
+
+**Symptom:** ChatGPT connects, but Claude or Gemini Spark never find the authorization
+server.
+
+**Cause:** Claude and Spark only look for discovery documents at fixed domain-root paths such
+as `/.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata.php`. The plugin
+serves those same documents from its own path, but nothing answers that literal root path
+without a rewrite.
+
+**Apache** — one `RewriteRule` per document. Add one protected-resource line per consumer
+plugin (they never collide):
+
+```apache
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Authorization server metadata — one per site
+    RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
+    RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
+
+    # Protected-resource metadata — one line per consumer plugin
+    RewriteRule ^/\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [L]
+</IfModule>
+```
+
+Always keep the `<IfModule mod_rewrite.c>` wrapper: a bare `RewriteEngine` with the module
+missing returns `500` for the whole site. Connector discovery behaviour changes without
+notice, so re-test all three periodically.
+
+### Full vhost example
+
+`CGIPassAuth` and the rewrites together, for a site with one consumer plugin
+(e.g. `local_hellomcp` or `mod_minilesson`). Merge into your real vhost rather than copying verbatim.
+
+```apache
+<IfModule mod_ssl.c>
+<VirtualHost *:443>
+    ServerName moodle.example.com
+    # Moodle web root: the directory with local/, mod/, config.php
+    # (the public/ subdirectory on the Moodle 5.x layout).
+    DocumentRoot /var/www/moodle/public
+
+    SSLEngine on
+    SSLCertificateFile    /etc/ssl/certs/moodle.example.com.pem
+    SSLCertificateKeyFile /etc/ssl/private/moodle.example.com.key
+
+    <Directory /var/www/moodle/public>
+        Require all granted
+        AllowOverride None
+        CGIPassAuth On
+    </Directory>
+
+    <IfModule mod_rewrite.c>
+        RewriteEngine On
+        RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
+        RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
+        # One line per consumer plugin: Change this to /mod/minilesson or whatever mcp plugin you are using
+        RewriteRule ^/\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [L]
+    </IfModule>
+
+    # ... your normal Moodle vhost directives (PHP handler, logging, etc.)
+</VirtualHost>
+</IfModule>
+```
+
+### Full `.htaccess` example
+
+Use this only when you can't edit the vhost. It needs `AllowOverride FileInfo AuthConfig`
+(or `All`) already granted for the Moodle web root — the `AllowOverride None` above would
+disable it. Put the file at the Moodle web root (`public/.htaccess` on the 5.x layout):
+create it if there is none, otherwise append to the existing .htaccess content.
+
+```apache
+# Let PHP see the Authorization: Bearer header (Apache >= 2.4.13)
+CGIPassAuth On
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Patterns have NO leading slash here — Apache strips the directory prefix in .htaccess.
+    RewriteRule ^\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [END]
+    RewriteRule ^\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [END]
+    # One line per consumer plugin. Change this to /mod/minilesson or whatever mcp plugin you are using
+    RewriteRule ^\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [END]
+</IfModule>
+```
+
+Two differences from the vhost form, both required: the `RewriteRule` patterns lose their
+leading `/`, and the flag is `[END]` not `[L]` (so `.htaccess` isn't re-processed after the
+internal rewrite).
+
 ## Glossary
 
 ### Terms unique to this README
 
 - **Insert form** — a `.well-known` discovery URL with the resource's (or the authorization
   server's own) path spliced in right after the well-known segment, e.g.
-  `/.well-known/oauth-protected-resource/mod/yourplugin/mcp.php`. Confirmed (2026-08-29) to
-  be what Claude and Gemini Spark actually request.
+  `/.well-known/oauth-protected-resource/mod/yourplugin/mcp.php`. Confirmed (2026-08-29) to be
+  what Claude and Gemini Spark request, and the form the [Web server
+  configuration](#web-server-configuration) rewrites target.
 - **Bare form** — a `.well-known` discovery URL with no resource path at all, e.g.
-  `/.well-known/oauth-protected-resource`. Not needed by any client tested. This is the one rewrite
-  that could collide across multiple registered resources, which is why it's not recommended.
+  `/.well-known/oauth-protected-resource`. No tested client needs it, and with more than one
+  registered resource it can only point at one of them — so this README uses the insert form
+  instead.
 - **Append form** — the well-known segment appended onto the *resource's own URL*, e.g.
   `/mod/yourplugin/mcp.php/.well-known/openid-configuration`. What ChatGPT requests; handled
   entirely in code (step 4 below), no web server config needed.
@@ -99,7 +249,14 @@ Also handled :
 
 Registering a client via DCR (Dynamic Client Registration) or via this plugin's manageoauthclients.php admin page does not grant the client any access. The real security check is a logged-in Moodle user clicking "Allow" on the /authorize consent screen. That authorizes the AI agent to act on their behalf. Access to that screen is restricted by a capability the consumer plugin declares (e.g. local/hellomcp:usemcp). That is checked at CONTEXT_SYSTEM — so a user must be granted it site-wide (site admins bypass it). It's re-checked on every token refresh.
 
-## The public API
+## For plugin developers
+
+Everything below is for developers adding OAuth support to their own MCP-enabled plugin. If
+you are only wiring an AI connector to an existing Poodll MCP plugin,
+[Installation](#installation) and [Web server configuration](#web-server-configuration) above
+are all you need.
+
+### The public API
 
 `\local_oauthmcp\api` is the only class a consuming plugin should call:
 
@@ -111,16 +268,16 @@ Registering a client via DCR (Dynamic Client Registration) or via this plugin's 
 
 Everything else in `classes/` (`oauth\registry`, `oauth\helper`, `oauth\revoker`) is internal.
 
-## How to use this with your plugin
+### Integrating your own plugin
 
 A consuming plugin can be any Moodle component. There are four steps:
 
-### 1. Install this plugin
+#### 1. Install this plugin
 
-Install `local_oauthmcp` the usual way. Your plugin's core functionality
-must not depend on it being present (see step 4).
+Install `local_oauthmcp` as described under [Installation](#installation). Your plugin's core
+functionality must not depend on it being present (see step 4).
 
-### 2. Declare your resource in your `lib.php`
+#### 2. Declare your resource in your `lib.php`
 
 Add a `<frankenstyle name>_mcp_oauth_resources()` function, that lets Moodle discover it.
 
@@ -164,7 +321,7 @@ Malformed entries (missing key, uncallable `mintcallback`) are skipped with a
 declared-but-uncallable `revokecallback` is the one exception: it is ignored (with the same
 notice) rather than taking the whole resource down, since it is optional.
 
-### 3. Implement `revoke_tokens()` and `mint_or_reuse_token()`
+#### 3. Implement `revoke_tokens()` and `mint_or_reuse_token()`
 
 These are used to get the actual web-service tokens that OAuth client needs to access the MCP service, and to revoke them when necessary. A Full example is provided below.
 
@@ -275,7 +432,7 @@ you declared in step 2, which `external_generate_token()` already re-checks inte
 `invalid_grant`). Set an explicit `$validuntil` rather than `0`/forever — the refresh-token
 layer already handles renewal.
 
-### 4. Point your resource endpoint's discovery at this plugin
+#### 4. Point your resource endpoint's discovery at this plugin
 
 Your *protected resource* is your MCP endpoint URL — e.g.
 `https://your.moodle/mod/yourplugin/mcp.php`. A client that hits it without a valid token has
@@ -376,7 +533,7 @@ After adding or changing any of this, **purge caches** — `local_oauthmcp` rebu
 resource registry from `get_plugins_with_function()` scans, so a newly declared resource
 returns `503` from (c) until you do.
 
-### Division of responsibility
+#### Division of responsibility
 
 | Handled centrally here — you never touch it | Stays in your plugin |
 | --- | --- |
@@ -387,125 +544,7 @@ returns `503` from (c) until you do.
 | Deciding *when* a grant is revoked, and calling your `revokecallback` | `revoke_tokens()` — actually invalidating the minted token |
 | Manual client admin UI, the three DB tables, caches, hourly cleanup | Your own capability + admin role page |
 
-## Server configuration (site admin)
-
-In an ideal world you should not have to add any web server settings so that Oauth MCP works. But a couple of things currently can break, and they need to be papered over with some webserver config. You should wait until it breaks before doing any of this config, it might work for you without doing anything special.
-
-
-### a) Let PHP see the `Authorization` header
-
-OAuth clients send the access token as `Authorization: Bearer <token>`. Apache in front of
-PHP-FPM (`mod_proxy_fcgi`) commonly drops that header before PHP sees it — and the same
-symptom has also turned up on a plain `mod_php` dev container, for an unrelated reason.
-Either way, if you have this problem: every authenticated MCP call is rejected with a `401` despite carrying a valid
-token, while the same token sent as `X-API-Key` gets through.
-
-Fix, in the `<Directory>` for the Moodle docroot (or `.htaccess`):
-
-```apache
-CGIPassAuth On
-```
-
-`CGIPassAuth`'s context is in a `directory` block in a virtual hosts file, or in an `.htaccess` file.
-Apache errors if you put it bare in `<VirtualHost>`.
-It needs Apache ≥ 2.4.13 (any currently supported release).
-
-nginx + PHP-FPM equivalent, in the `location ~ \.php$` block:
-
-```nginx
-fastcgi_param HTTP_AUTHORIZATION $http_authorization;
-```
-
-Check it: `curl` your MCP endpoint with a bogus token once as `-H "X-API-Key: x"` and once
-as `-H "Authorization: Bearer x"`. If only the `Authorization` form behaves as though no
-token was sent, the header is being stripped. (A consuming plugin's `request_token()` should
-also fall back to `REDIRECT_HTTP_AUTHORIZATION` and accept `X-API-Key` — that covers some
-`mod_rewrite`/CGI setups, but it does **not** substitute for the fix above against FPM
-stripping.)
-
-### b) Domain-root `.well-known` insert-form rewrites
-
-The plugin serves discovery entirely from its own path (step 4) with zero server config, and
-that is enough for **ChatGPT**. **Claude** and **Gemini Spark**, as of 2026-08, need one more
-thing: they request the RFC 8414 **insert** form at the domain root — the well-known segment
-with the resource's (or the authorization server's own) path spliced in right after it, e.g.
-`/.well-known/oauth-protected-resource/mod/yourplugin/mcp.php`. That specific form isn't
-served by anything in this plugin or in Moodle's own routing (a plugin cannot claim a literal
-site-root path — see the design notes if you're curious why), so it needs one `RewriteRule`
-per document:
-
-```apache
-# Authorization-server metadata — one per site, needed by both Claude and Spark
-RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
-
-# Optional belt-and-braces alias — not observed as needed by either client, but RFC 8414 §3.3
-# allows either well-known suffix for the same document, and it costs nothing to add.
-RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
-
-# Protected-resource metadata — one per registered resource, needed by both Claude and Spark
-RewriteRule ^/\.well-known/oauth-protected-resource/mod/yourplugin/mcp\.php$ /mod/yourplugin/oauth_resource_metadata.php [L]
-```
-
-That's it — There's no reason to add the *bare* forms e.g. `^/\.well-known/oauth-protected-resource$`
-
-`oauth_metadata.php` deliberately never gates on `PATH_INFO`, so a rewrite reaching it by an
-unexpected path is harmless. **Never** ship a bare `RewriteEngine`/`RewriteRule` in a
-plugin's own `.htaccess`: if `mod_rewrite` isn't loaded, Apache returns `500` for the entire
-directory, not just the well-known paths — wrap it in `<IfModule mod_rewrite.c>` if you ever
-must.
-
-Client discovery behaviour changes without notice — it is worth re-testing all three connectors periodically.
-
-### Full vhost example
-
-Both fixes together, for a single-resource site (`local_hellomcp` the test
-resource). Merge the `CGIPassAuth` line and the rewrite block into your real vhost rather
-than using this verbatim.
-
-```apache
-<IfModule mod_ssl.c>
-<VirtualHost *:443>
-    ServerName moodle.example.com
-    # Moodle web root: the directory containing local/, mod/, config.php.
-    # On the Moodle 5.x public/ layout that is the public/ subdirectory.
-    DocumentRoot /var/www/moodle/public
-
-    SSLEngine on
-    SSLCertificateFile    /etc/ssl/certs/moodle.example.com.pem
-    SSLCertificateKeyFile /etc/ssl/private/moodle.example.com.key
-
-    <Directory /var/www/moodle/public>
-        Require all granted
-        AllowOverride None
-        # Let PHP see the OAuth bearer token (Authorization header). Apache >= 2.4.13.
-        CGIPassAuth On
-    </Directory>
-
-    # Domain-root OAuth discovery shims for Claude and Gemini Spark (confirmed 2026-08-29 —
-    # both use the RFC 8414 insert form below, neither needs or falls back to the bare form,
-    # so there is nothing here that can collide across multiple registered resources).
-    <IfModule mod_rewrite.c>
-        RewriteEngine On
-
-        # Authorization-server metadata -> local_oauthmcp (one authorization server per site)
-        RewriteRule ^/\.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata\.php$ /local/oauthmcp/oauth_metadata.php [L]
-        # Optional belt-and-braces alias — not observed as needed, costs nothing to keep
-        RewriteRule ^/\.well-known/openid-configuration/local/oauthmcp/oauth_metadata\.php$       /local/oauthmcp/oauth_metadata.php [L]
-
-        # Protected-resource metadata -> the one registered resource (local_hellomcp).
-        # Add one more line like this per additional registered resource — they never collide.
-        RewriteRule ^/\.well-known/oauth-protected-resource/local/hellomcp/mcp\.php$ /local/hellomcp/oauth_resource_metadata.php [L]
-    </IfModule>
-
-    # ... your normal Moodle vhost directives (PHP handler / proxy_fcgi, logging, etc.)
-</VirtualHost>
-</IfModule>
-```
-
-The `[L]`-only flags are correct: the substitutions are URL-paths under `DocumentRoot`, so
-Apache does an internal subrequest and PHP still handles the `.php`.
-
-## Revocation
+### Revocation
 
 Because the "access token" is a real Moodle web-service token this plugin did not create, it
 cannot delete it either — once handed out it stays valid until its own `validuntil`, even
@@ -530,14 +569,14 @@ A callback that throws is caught and downgraded to a `DEBUG_DEVELOPER` `debuggin
 so a consumer bug cannot break the `/token` response. It is a plain best-effort hook: there
 is no retry queue, so keep it a straightforward DB delete.
 
-## Multi-resource behaviour
+### Multi-resource behaviour
 
 Because the server is shared, more than one plugin can register a resource on one site.
 One consequence: if a client omits the OAuth `resource` parameter, `registry::resolve()`
 falls back to "the one registered resource" **only when exactly one is registered**. With
 two or more, an omitted `resource` fails closed (`invalid_target`) rather than guessing.
 
-## Reference consumers
+### Reference consumers
 
 - **`local_hellomcp`** — a minimal, working example of an MCP enabled Moodle plugin with Oauth support. Start here if you're wiring up a new plugin.
   See it at: [https://github.com/justinhunt/moodle-local_hellomcp](https://github.com/justinhunt/moodle-local_hellomcp)
