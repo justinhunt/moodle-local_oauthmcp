@@ -13,10 +13,10 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`, `
 
 ## Installation
 
-Install this plugin so an OAuth-only AI connector — Claude.ai (web), ChatGPT, 
+Install this plugin so that AI agent that uses OAuth — Claude.ai (web), ChatGPT, 
 or Google Gemini Spark — can authorize and use an MCP plugin such as
  **mod_minilesson** or **local_hellomcp**. `local_oauthmcp` does nothing on
-its own; it needs at least one such *consumer* plugin installed alongside it.
+its own; it needs at least one such *consumer* plugin (eg Poodll Minilesson) installed alongside it.
 
 ### 1. Install the plugin
 
@@ -32,7 +32,7 @@ There are no settings to configure. Though in some cases you may need to use the
 Each agent has its own UI for adding MCP tools (they may call them "plugins" or "connectors"). Once you find it the steps 
 are basically the same as the example agents listed below.
 
-You will need the provide the MCP URL of the Moodle plugin (consumer). It is sometimes called a resource. It will probably look like:
+You will need to provide the MCP URL of the Moodle plugin (consumer). It is sometimes called a resource. It will probably look like:
 `https://[path to moodle]/[path to plugin]/mcp.php`
 
 - **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings. 
@@ -254,9 +254,8 @@ Registering a client via DCR (Dynamic Client Registration) or via this plugin's 
 ## For plugin developers
 
 Everything below is for developers adding OAuth support to their own MCP-enabled plugin. If
-you are only wiring an AI connector to an existing Poodll MCP plugin,
-[Installation](#installation) and [Web server configuration](#web-server-configuration) above
-are all you need.
+you are connecting an agent to an  MCP plugin, [Installation](#installation) and 
+[Web server configuration](#web-server-configuration) above are all you need.
 
 ### The public API
 
