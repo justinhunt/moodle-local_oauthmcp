@@ -2,7 +2,7 @@
 
 A shared **OAuth 2.1 authorization server** for MCP-enabled Moodle plugins.
 
-AI agents can authenticate with an MCP server using a bearer token directly or obtaining one via OAuth. Moodle has a system for generating web service tokens and these work fine with MCP as bearer tokens if the agent supports it. But recently AI clients connector UI settings only accept OAuth information (ie not a token) e.g Claude.ai (web), ChatGPT connectors, and Google Gemini Spark.  This plugin uses the existing Moodle web-service token system but wraps it in an OAuth 2.1 server.
+AI agents can authenticate with an MCP server using a bearer token directly or obtaining one via OAuth. Moodle has a system for generating web service tokens and these work fine with MCP as bearer tokens if the agent supports it. But recently the UI for many agents only accept OAuth information (ie not a token) e.g Claude.ai (web), ChatGPT connectors, and Google Gemini Spark.  This plugin uses the existing Moodle web-service token system but wraps it in an OAuth 2.1 server.
 
 It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`, `local_hellomcp`). The MCP-enabled plugin will already support token based authentication, and this plugin (local_oauthmcp) gives it a way to wrap that in an OAuth server. The MCP-enabled plugin will return OAuth connection information to the AI agent (ie the MCP client) that points to the URLs exposed by this plugin.
 
@@ -13,9 +13,9 @@ It is designed to be used by other MCP-enabled plugins (e.g. `mod_minilesson`, `
 
 ## Installation
 
-Most administrators install this plugin for one reason: so an OAuth-only AI connector —
-Claude.ai (web), ChatGPT, or Google Gemini Spark — can authorize against a Poodll MCP
-plugin such as **mod_minilesson** or **local_hellomcp**. `local_oauthmcp` does nothing on
+Install this plugin so an OAuth-only AI connector — Claude.ai (web), ChatGPT, 
+or Google Gemini Spark — can authorize and use an MCP plugin such as
+ **mod_minilesson** or **local_hellomcp**. `local_oauthmcp` does nothing on
 its own; it needs at least one such *consumer* plugin installed alongside it.
 
 ### 1. Install the plugin
@@ -27,7 +27,11 @@ administration ▸ Notifications** (or run `php admin/cli/upgrade.php`).
 
 There are no settings to configure. Though in some cases you may need to use the plugin's "Manage OAuth Clients" page to get a client id and secret (these are not the same as the Moodle username and password). Read on ..
 
-### 2. Per-connector setup
+### 2. Agent setup
+
+Each agent has its own UI and but once you find it the steps are basically the same as the example agents listed below.
+You will need th provide the URL of Moodle MCP plugin (consumer). It is sometimes called a resource. It will look like:
+`https://[path to moodle]/[path to plugin]/mcp.php`
 
 - **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings. 
   Login into Moodle if asked, and approve the "Allow" consent screen when it appears.
@@ -54,7 +58,7 @@ symptom you actually see. It is the same for every consumer plugin.
 
 **Cause:** Some web server PHP extensions by default strip the headers we need. PHP-FPM is one. 
 
-**Apache** — inside the `<Directory>` block for the Moodle web root (it errors if put bare in `<VirtualHost>`), or in `.htaccess` :
+**Apache** — inside the `<Directory>` block for the Moodle web root in a virtual hosts file, or in `.htaccess` :
 
 ```apache
 CGIPassAuth On
@@ -76,7 +80,7 @@ server.
 as `/.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata.php`. The plugin
 serves those same documents from its own path, so it needs a rewrite to find them.
 
-**Apache** — one `RewriteRule` per discovery document. And one rule per consumer plugin:
+**Apache** —Two `RewriteRules` (1 per discovery document). And one `RewriteRule` per consumer plugin:
 
 ```apache
 <IfModule mod_rewrite.c>
