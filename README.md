@@ -27,10 +27,12 @@ administration ▸ Notifications** (or run `php admin/cli/upgrade.php`).
 
 There are no settings to configure. Though in some cases you may need to use the plugin's "Manage OAuth Clients" page to get a client id and secret (these are not the same as the Moodle username and password). Read on ..
 
-### 2. Agent setup
+### 2. Configure Agent to use it
 
-Each agent has its own UI and but once you find it the steps are basically the same as the example agents listed below.
-You will need th provide the URL of Moodle MCP plugin (consumer). It is sometimes called a resource. It will look like:
+Each agent has its own UIfor adding MCP tools(they may call them "plugins" or "connectors"). Once you find it the steps 
+are basically the same as the example agents listed below.
+
+You will need the provide the mcp URL of the Moodle plugin (consumer). It is sometimes called a resource. It will look like:
 `https://[path to moodle]/[path to plugin]/mcp.php`
 
 - **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings. 
@@ -44,7 +46,7 @@ You will need th provide the URL of Moodle MCP plugin (consumer). It is sometime
   The plugin will give you a client ID and secret to paste into Spark. Each Moodle user can use the same client ID and secret.
   After that proceed as for ChatGPT. NB Web server config. probably needed 
 
-If a connector still cannot complete authorization after doing the steps above, the site probably 
+If it still cannot complete authorization after doing the steps above, the site probably 
 needs some web-server configuration. See [Web server configuration](#web-server-configuration).
 
 ## Web server configuration
@@ -76,9 +78,9 @@ fastcgi_param HTTP_AUTHORIZATION $http_authorization;
 **Symptom:** ChatGPT connects, but Claude or Gemini Spark never find the authorization
 server.
 
-**Cause:** Claude and Spark only look for discovery documents at fixed domain-root paths such
-as `/.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata.php`. The plugin
-serves those same documents from its own path, so it needs a rewrite to find them.
+**Cause:** Claude and Spark currently (Sept 2026) only look for discovery documents at 
+fixed domain-root paths such as `/.well-known/oauth-authorization-server/local/oauthmcp/oauth_metadata.php`.
+The plugin serves those same documents from its own path, so such agents need a rewrite to find them.
 
 **Apache** —Two `RewriteRules` (1 per discovery document). And one `RewriteRule` per consumer plugin:
 
