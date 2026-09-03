@@ -27,12 +27,12 @@ administration ▸ Notifications** (or run `php admin/cli/upgrade.php`).
 
 There are no settings to configure. Though in some cases you may need to use the plugin's "Manage OAuth Clients" page to get a client id and secret (these are not the same as the Moodle username and password). Read on ..
 
-### 2. Configure Agent to use it
+### 2. Configure agent to use it
 
-Each agent has its own UIfor adding MCP tools(they may call them "plugins" or "connectors"). Once you find it the steps 
+Each agent has its own UI for adding MCP tools (they may call them "plugins" or "connectors"). Once you find it the steps 
 are basically the same as the example agents listed below.
 
-You will need the provide the mcp URL of the Moodle plugin (consumer). It is sometimes called a resource. It will look like:
+You will need the provide the MCP URL of the Moodle plugin (consumer). It is sometimes called a resource. It will probably look like:
 `https://[path to moodle]/[path to plugin]/mcp.php`
 
 - **ChatGPT** — Add the consumer plugin's MCP URL in the connector's settings. 
@@ -40,19 +40,18 @@ You will need the provide the mcp URL of the Moodle plugin (consumer). It is som
 - **Claude.ai (web)** — Add the consumer plugin's MCP URL in the connector's own settings. 
   Login to Moodle if asked, and approve the "Allow" consent screen when it appears.
   NB Web server config. probably needed 
-- **Google Gemini Spark** — Needs a client created by hand by the Moodle site administrator.
+- **Google Gemini Spark** — Needs a client created by hand by the Moodle site admin.
   It and similar agents will give you  a redirect URL. 
-  Enter that at **Site administration ▸ Plugins ▸ Local plugins ▸ Manage OAuth clients**. 
-  The plugin will give you a client ID and secret to paste into Spark. Each Moodle user can use the same client ID and secret.
-  After that proceed as for ChatGPT. NB Web server config. probably needed 
+  The admin should enter that at **Site administration ▸ Plugins ▸ Local plugins ▸ Manage OAuth clients**. 
+  The plugin will then give you a client ID and secret to paste into Spark. Each Moodle user can use the same client ID and secret.
+  After that proceed as for ChatGPT and approve access on the consent screen. NB Web server config. probably needed 
 
 If it still cannot complete authorization after doing the steps above, the site probably 
 needs some web-server configuration. See [Web server configuration](#web-server-configuration).
 
 ## Web server configuration
 
-Try connecting first — you may need none of this. Apply only the part that matches the
-symptom you actually see. It is the same for every consumer plugin.
+Try connecting first — you may need none of this. 
 
 ### a) Let PHP see the `Authorization` header
 
