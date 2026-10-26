@@ -223,7 +223,7 @@ internal rewrite).
   That is Moodle core's `auth_oauth2`, which points the opposite direction.
 - **Not a token issuer of its own.** The "access token" returned from `/token` is a real
   Moodle web-service token — a genuine `external_tokens` row (permanent type) minted by the
-  consumer plugin's `mintcallback` via core's `external_generate_token()`, the same routine
+  consumer plugin's `mintcallback` via core's `\core_external\util::generate_token()`, the same routine
   the "Create token" admin button uses. 
   
 
@@ -367,7 +367,7 @@ class facade {
      * local_oauthmcp to hand back from /token as the OAuth access token.
      *
      * @throws \moodle_exception if the service is missing, or (from
-     *         external_generate_token) if $userid lacks the capability — local_oauthmcp
+     *         util::generate_token) if $userid lacks the capability — local_oauthmcp
      *         catches that and returns an OAuth `invalid_grant`.
      */
     public static function mint_or_reuse_token(int $userid): string {
@@ -391,11 +391,10 @@ class facade {
             return $token->token;
         }
 
-        // Otherwise mint one. external_generate_token() re-checks the service's required
+        // Otherwise mint one. util::generate_token() re-checks the service's required
         // capability for $userid and throws if it's missing.
-        require_once($CFG->libdir . '/externallib.php');
         $validuntil = empty($CFG->tokenduration) ? 0 : (time() + $CFG->tokenduration);
-        return external_generate_token(
+        return \core_external\util::generate_token(
             EXTERNAL_TOKEN_PERMANENT,
             $service,
             $userid,
@@ -425,13 +424,14 @@ class facade {
 }
 ```
 
-Use `external_generate_token()`, **not** `external_generate_token_for_current_user()` — the
+Use `\core_external\util::generate_token()`, **not** `generate_token_for_current_user()` — the
 latter adds two gates that are wrong here: it excludes site admins, and it requires
 `moodle/webservice:createtoken`. The only gate this flow should enforce is the `capability`
-you declared in step 2, which `external_generate_token()` already re-checks internally
+you declared in step 2, which `generate_token()` already re-checks internally
 (throwing `nocapabilitytousethisservice`, which `oauth_token.php` turns into an OAuth
 `invalid_grant`). Set an explicit `$validuntil` rather than `0`/forever — the refresh-token
-layer already handles renewal.
+layer already handles renewal. Do not use the old global `external_generate_token()`: from
+Moodle 5.3 it throws a `coding_exception`.
 
 #### 4. Point your resource endpoint's discovery at this plugin
 
